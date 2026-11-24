@@ -1,0 +1,317 @@
+generator client {
+  provider = "sqlite"
+  output   = "./node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// Colleges and their departments
+model College {
+  id          String    @id @default(uuid())
+  name        String    // e.g., "Computer Science", "Engineering"
+  code        String    // e.g., "CS", "EE"
+  location    String?   // Campus location
+  description String?   // College description
+  founded     DateTime? // Founded date
+  students    Student[]
+  moderators  Moderator[]
+  administrators Administrator[]
+  announcements Announcement[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@ index([name])
+  @@ index([code])
+}
+
+// Departments
+model Department {
+  id          String    @id @default(uuid())
+  name        String    // e.g., "Computer Science", "Mathematics"
+  code        String?   // e.g., "CS101"
+  collegeId   String
+  college     College   @relation(fields: [collegeId], references: [id])
+  students    Student[]
+
+  @@ index([collegeId])
+  @@ index([code])
+}
+
+// Users (students)
+model User {
+  id                   String    @id @default(uuid())
+  fullName             String    // Legal full name
+  displayName          String    // Display name shown publicly
+  email                String    @unique // Never publicly visible
+  password             String    // Hashed password
+  phoneNumber          String?   // Optional, always private
+  profilePictureUrl    String?   // Optional, hidden by default
+  collegeId            String?   // Nullable - student may not specify immediately
+  departmentId         String?   // Nullable
+  academicYear         String?   // e.g., "Freshman", "Senior"
+  bio                  String?   // Short bio
+  interests            String?   // Comma-separated interests
+  skills               String?   // Comma-separated skills
+  isEmailVerified      Boolean   @default(false)
+  isPhoneVerified      Boolean   @default(false)
+  isOnline             Boolean   @default(false)
+  lastSeenAt           DateTime  @default(now())
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // Relations
+  college               College?   @relation(fields: [collegeId], references: [id])
+  department            Department? @relation(fields: [departmentId], references: [id])
+  conversationsSent     Conversation[] // Messages sent
+  conversationsReceived Conversation[] // Messages received
+  groupMembers          GroupMember[]
+  createdGroups         Group[]        // Groups created by this user
+  receivedNotifications Notification[]
+  blockedUsers          UserBlock[]
+  reportedUsers         UserReport[]
+  settings              UserSettings?
+
+  @@ index([email])
+  @@ index([isOnline])
+  @@ index([collegeId])
+}
+
+// College Administrator
+model Administrator {
+  id             String @id @default(uuid())
+  userId         String @unique
+  user           User     @relation(fields: [userId], references: [id])
+  collegeId      String
+  college        College  @relation(fields: [collegeId], references: [id])
+  role           String   // "CollegeAdmin", "DepartmentHead"
+  permissions    String[] // JSON array of permissions
+  assignedAt     DateTime @default(now())
+  revokedAt      DateTime?
+
+  @@ unique([userId])
+  @@ index([collegeId])
+}
+
+// Moderator
+model Moderator {
+  id             String @id @default(uuid())
+  userId         String @unique
+  user           User     @relation(fields: [userId], references: [id])
+  collegeId      String
+  college        College  @relation(fields: [collegeId], references: [id])
+  role           String   // "GeneralMod", "ChannelMod"
+  permissions    String[] // JSON array of permissions
+  assignedAt     DateTime @default(now())
+  revokedAt      DateTime?
+
+  @@ unique([userId])
+  @@ index([collegeId])
+}
+
+// Conversations (direct messaging conversations)
+model Conversation {
+  id                String    @id @default(uuid())
+  participants      User[]    // Many-to-many
+  lastMessageAt     DateTime?
+  unreadCount       Integer   @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@ index([lastMessageAt])
+}
+
+// ConversationParticipants - many-to-many relationship
+model ConversationParticipant {
+  conversationId String
+  userId         String
+  joinedAt       DateTime @default(now())
+
+  @@ compositePrimaryKey([conversationId, userId])
+}
+
+// Messages
+model Message {
+  id                String    @id @default(uuid())
+  conversationId    String?
+  senderId          String
+  receiverId        String?     // Nullable for group messages
+  content           String    // Text content
+  imageUrl          String?     // For shared images
+  fileUrl           String?     // For shared files
+  status            MessageStatus @default(pending) // pending, delivered, read
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  createdAt         DateTime  @default(now())
+
+  // Relations
+  conversation      Conversation @relation(fields: [conversationId], references: [id])(onDelete: Cascade)
+  sender            User         @relation(fields: [senderId], references: [id])
+
+  @@ index([conversationId])
+  @@ index([senderId])
+  @@ index([createdAt])
+}
+
+enum MessageStatus {
+  pending
+  delivered
+  read
+}
+
+// Groups (student groups/organizations)
+model Group {
+  id                String    @id @default(uuid())
+  name              String    // e.g., "Chess Club", "Women in Tech"
+  description       String?
+  iconUrl           String?   // Group icon/avatar
+  collegeId         String?
+  isPrivate         Boolean   @default(true)
+  isVerified        Boolean   @default(false)
+  creatorId         String
+  creator           User         @relation(fields: [creatorId], references: [id])
+  members           GroupMember[]
+  channels          Channel[]
+  announcements     Announcement[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@ index([collegeId])
+  @@ index([isVerified])
+}
+
+// Group members
+model GroupMember {
+  id          String @id @default(uuid())
+  userId      String
+  groupId     String
+  role        String   // "Member", "Admin", "Moderator"
+  joinedAt    DateTime @default(now())
+  isMuted     Boolean  @default(false)
+  joinedBy    String   // Who invited them
+
+  @@ compositePrimaryKey([userId, groupId])
+  @@ index([groupId])
+  @@ index([userId])
+}
+
+// Channels within groups
+model Channel {
+  id                String    @id @default(uuid())
+  name              String    // e.g., "#general", "#announcements"
+  description       String?
+  isPrivate         Boolean   @default(false)
+  isAnnouncement    Boolean   @default(false)
+  isDirect          Boolean   @default(false) // Direct message channel
+  groupId           String
+  group             Group        @relation(fields: [groupId], references: [id])
+  creatorId         String
+  creator           User         @relation(fields: [creatorId], references: [id])
+  members           ChannelMember[]
+  messages          Message[]
+  isCampusDefault   Boolean   @default(false) // Default campus channels
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@ index([groupId])
+  @@ index([isAnnouncement])
+  @@ index([isCampusDefault])
+}
+
+// Channel members
+model ChannelMember {
+  id          String @id @default(uuid())
+  userId      String
+  channelId   String
+  joinedAt    DateTime @default(now())
+  mutedUntil  DateTime?
+
+  @@ compositePrimaryKey([userId, channelId])
+  @@ index([channelId])
+}
+
+// User blocks
+model UserBlock {
+  id           String @id @default(uuid())
+  blockerId    String
+  blockedId    String
+  createdAt    DateTime @default(now())
+
+  @@ compositePrimaryKey([blockerId, blockedId])
+  @@ index([blockerId])
+}
+
+// User reports
+model UserReport {
+  id             String @id @default(uuid())
+  reporterId     String
+  reportedUserId String
+  reason         String    // "spam", "harassment", "inappropriate", "other"
+  description    String?
+  status         String    @default("pending") // pending, reviewed, resolved, dismissed
+  createdAt      DateTime  @default(now())
+  reviewedAt     DateTime?
+  reviewedBy     String?   // Admin who reviewed
+
+  @@ index([reporterId])
+  @@ index([reportedUserId])
+  @@ index([status])
+}
+
+// Announcements
+model Announcement {
+  id             String    @id @default(uuid())
+  title          String    // Required
+  content        String    // Required
+  type           String    // "campus", "group", "system", "admin"
+  collegeId      String?   // Nullable for system-wide announcements
+  groupId        String?   // Nullable for group-specific announcements
+  authorId       String
+  author         User       @relation(fields: [authorId], references: [id])
+  isPinned       Boolean   @default(false)
+  isArchived     Boolean   @default(false)
+  targetAudience String[]  // ["all", "students", "faculty", "specific"]
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@ index([collegeId])
+  @@ index([groupId])
+  @@ index([isPinned])
+}
+
+// User settings
+model UserSettings {
+  id          String @id @default(uuid())
+  userId      String @unique
+  user        User   @relation(fields: [userId], references: [id])
+
+  // Notification preferences
+  newMessageNotifications  Boolean   @default(true)
+  groupActivityNotifications Boolean @default(true)
+  mentionNotifications      Boolean   @default(true)
+  announcementNotifications Boolean   @default(true)
+  marketingNotifications    Boolean   @default(false)
+  emailDigestFrequency      String?   // "daily", "weekly", "never"
+
+  // Privacy settings
+  profileVisibility         String    @default("campus") // "campus", "friends", "private"
+  displayNameVisibility     String    @default("everyone") // "everyone", "campus", "friends", "private"
+  onlineStatusVisibility   String    @default("campus") // "campus", "friends", "private"
+  lastSeenVisibility        String    @default("everyone") // "everyone", "campus", "friends", "private"
+  profilePictureVisibility  String    @default("campus") // "campus", "friends", "private", "none"
+  messageReadReceipts       Boolean   @default(true)
+
+  // Theme and UI
+  themePreference           String    @default("system") // "light", "dark", "system"
+  reducedMotion             Boolean   @default(false)
+
+  // Analytics
+  lastLoginAt   DateTime?
+  loginCount    Integer   @default(0)
+
+  @@ unique([userId])
+  @@ index([userId])
+}
