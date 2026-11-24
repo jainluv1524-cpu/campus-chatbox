@@ -146,10 +146,6 @@ The admin dashboard provides:
 3. **Connect** - Message friends or join groups
 4. **Engage** - Share in channels, attend events, apply for jobs
 
-## 📜 License
-
-MIT License
-
 ## 🤝 Contributing
 
 Contributions welcome! Open a pull request.
@@ -157,10 +153,6 @@ Contributions welcome! Open a pull request.
 ## 📧 Issues & Bugs
 
 Please report bugs and issues on GitHub Issues.
-
-## 📞 Support
-
-Email: support@campuschatbox.edu
 
 ## ⭐ Show Your Support
 
